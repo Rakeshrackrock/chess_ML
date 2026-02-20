@@ -82,6 +82,21 @@ export default function App() {
     }
   }
 
+  async function submitMove(
+    from: { r: number; c: number },
+    to: { r: number; c: number }
+    ) 
+    {
+      if (!gameId || !playerToken) return;
+
+      try {
+        const res = await api.makeMove(gameId, playerToken, { from, to });
+        setState(res.state);
+      } catch (e: any) {
+        setError(e.message);
+      }
+    }
+
   async function requestAiMove() {
     if (!gameId) return;
     setError("");
@@ -97,7 +112,7 @@ export default function App() {
     <div className="page">
       <header className="header">
         <div>
-          <h1>Shatigo on GCP</h1>
+          <h1>Chess on GCP</h1>
           <p className="sub">No login • Cloud Run + Firestore • ML stub ready</p>
         </div>
       </header>
@@ -152,10 +167,30 @@ export default function App() {
                   {Array.from({ length: 8 }).map((_, c) => {
                     const idx = r * 8 + c;
                     const cell = state.board[idx] ?? ".";
+                    const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
+
+                    function onCellClick(r: number, c: number) {
+                      if (!state) return;
+
+                      if (!selected) {
+                        // first click: select piece
+                        setSelected({ r, c });
+                      } else {
+                        // second click: attempt move
+                        submitMove(selected, { r, c });
+                        setSelected(null);
+                      }
+                    }
                     return (
-                      <div className="cell" key={`${r}-${c}`}>
+                      <div
+                        className={`cell ${selected?.r === r && selected?.c === c ? "selected" : ""}`}
+                        onClick={() => onCellClick(r, c)}
+                      >
                         {cell}
                       </div>
+                      //<div className="cell" key={`${r}-${c}`}>
+                      //  {cell}
+                      //</div>
                     );
                   })}
                 </div>
@@ -169,7 +204,7 @@ export default function App() {
           </div>
 
           <div className="muted">
-            Next: replace the placeholder board with real Shatigo UI + legal moves.
+            Next: replace the placeholder board with real Chess UI + legal moves.
           </div>
         </section>
       </div>
