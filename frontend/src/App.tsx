@@ -20,12 +20,13 @@ export default function App() {
   const [role, setRole] = useState<Role | "">("");
   const [state, setState] = useState<GameState | null>(null);
   const [error, setError] = useState<string>("");
+  const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
 
   useMemo(() => getOrCreateLocalToken("shatigo_client_id"), []);
 
 
   async function onCreate() {
-    setError("");
+    setError("Not Created");
     try {
       const res = await api.createGame();
       setGameId(res.gameId);
@@ -39,7 +40,7 @@ export default function App() {
   }
 
   async function onJoin() {
-    setError("");
+    setError("Could not join");
     try {
       const res = await api.joinGame(gameId.trim(), joinCode.trim());
       setRole(res.player);
@@ -112,7 +113,7 @@ export default function App() {
     <div className="page">
       <header className="header">
         <div>
-          <h1>Chess on GCP</h1>
+          <h1>Chess on GCP BUILD TEST</h1>
           <p className="sub">No login • Cloud Run + Firestore • ML stub ready</p>
         </div>
       </header>
@@ -156,41 +157,46 @@ export default function App() {
         </section>
 
         <section className="card">
-          <h2>Board (placeholder)</h2>
+          <h2>Board</h2>
+          
+          <pre style={{ fontSize: 10 }}>
+          {JSON.stringify(state.board, null, 2)}
+          </pre>
 
           {!state ? (
             <div className="muted">Create or join a game to see the board.</div>
           ) : (
+                
+
             <div className="board">
               {Array.from({ length: 8 }).map((_, r) => (
                 <div className="boardRow" key={r}>
                   {Array.from({ length: 8 }).map((_, c) => {
                     const idx = r * 8 + c;
                     const cell = state.board[idx] ?? ".";
-                    const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
 
-                    function onCellClick(r: number, c: number) {
-                      if (!state) return;
+                    const isSelected =
+                      selected?.r === r && selected?.c === c;
 
+                    function onCellClick() {
                       if (!selected) {
-                        // first click: select piece
+                        // select first square
                         setSelected({ r, c });
                       } else {
-                        // second click: attempt move
+                        // attempt move
                         submitMove(selected, { r, c });
                         setSelected(null);
                       }
                     }
+
                     return (
                       <div
-                        className={`cell ${selected?.r === r && selected?.c === c ? "selected" : ""}`}
-                        onClick={() => onCellClick(r, c)}
+                        key={`${r}-${c}`}
+                        className={`cell ${isSelected ? "selected" : ""}`}
+                        onClick={onCellClick}
                       >
                         {cell}
                       </div>
-                      //<div className="cell" key={`${r}-${c}`}>
-                      //  {cell}
-                      //</div>
                     );
                   })}
                 </div>
@@ -204,14 +210,14 @@ export default function App() {
           </div>
 
           <div className="muted">
-            Next: replace the placeholder board with real Chess UI + legal moves.
+            Click a piece, then click a destination square.
           </div>
         </section>
-      </div>
+        </div>
 
       <footer className="footer">
         <span>API: {import.meta.env.VITE_API_BASE ?? "http://localhost:8080"}</span>
-        <span>Role: {role || "-"}</span>
+        <span>Role: {role || "P1"}</span>
       </footer>
     </div>
   );

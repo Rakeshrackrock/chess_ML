@@ -17,9 +17,19 @@ button:hover { filter: brightness(1.08); }
 
 .board { display: inline-block; border: 1px solid #2c3b5a; border-radius: 12px; overflow: hidden; margin: 8px 0 12px; }
 .boardRow { display: flex; }
-.cell { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-right: 1px solid #1f2a42; border-bottom: 1px solid #1f2a42; }
-.boardRow:last-child .cell { border-bottom: none; }
-.cell:last-child { border-right: none; }
+.cell { width: 42px; height: 42px; display: flex; 
+    align-items: center; justify-content: center; cursor: pointer; font-size: 18px; background: #f0d9b5;
+    border-right: 1px solid #1f2a42; border-bottom: 1px solid #1f2a42; }
+
+.boardRow:nth-child(even) .cell:nth-child(even),
+.boardRow:nth-child(odd) .cell:nth-child(odd) {
+  background: #b58863;
+}
+
+.cell.selected {
+  outline: 3px solid #4da3ff;
+}
 
 .footer { margin-top: 18px; display: flex; justify-content: space-between; opacity: 0.7; font-size: 12px; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
