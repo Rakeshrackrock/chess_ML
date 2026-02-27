@@ -113,7 +113,7 @@ export default function App() {
     <div className="page">
       <header className="header">
         <div>
-          <h1>Chess on GCP BUILD TEST</h1>
+          <h1>Chess on GCP</h1>
           <p className="sub">No login • Cloud Run + Firestore • ML stub ready</p>
         </div>
       </header>
@@ -159,10 +159,6 @@ export default function App() {
         <section className="card">
           <h2>Board</h2>
           
-          <pre style={{ fontSize: 10 }}>
-          {JSON.stringify(state.board, null, 2)}
-          </pre>
-
           {!state ? (
             <div className="muted">Create or join a game to see the board.</div>
           ) : (
