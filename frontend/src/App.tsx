@@ -26,7 +26,6 @@ export default function App() {
 
 
   async function onCreate() {
-    setError("Not Created");
     try {
       const res = await api.createGame();
       setGameId(res.gameId);
@@ -34,13 +33,15 @@ export default function App() {
       setState(res.state);
       setRole(res.player);
       setPlayerToken(res.playerToken);
+
+      await fetch("http://localhost:8080/games", { method: "POST" }).then(r => r.json())
+    
     } catch (e: any) {
       setError(e.message);
     }
   }
 
   async function onJoin() {
-    setError("Could not join");
     try {
       const res = await api.joinGame(gameId.trim(), joinCode.trim());
       setRole(res.player);
@@ -127,6 +128,11 @@ export default function App() {
           </div>
 
           <div className="row">
+            <div className="muted">
+              Game ID and Join Code are generated when you create a game. Use them to join from another browser or share with a friend.
+            </div>
+          </div>
+          <div className="row">
             <label>Game ID</label>
             <input value={gameId} onChange={(e) => setGameId(e.target.value)} placeholder="game_..." />
           </div>
@@ -150,10 +156,6 @@ export default function App() {
               <div><b>Message:</b> {state.message}</div>
             </div>
           )}
-
-          <div className="hint">
-            Tip: open this page in two browsers. Create in one, join in the other.
-          </div>
         </section>
 
         <section className="card">
@@ -201,7 +203,7 @@ export default function App() {
           )}
 
           <div className="row">
-            <button onClick={submitDummyMove}>Submit Dummy Move</button>
+            <button onClick={submitDummyMove}>Submit Move</button>
             <button onClick={requestAiMove}>AI Move (stub)</button>
           </div>
 
