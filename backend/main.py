@@ -13,12 +13,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
     "http://localhost:5173",
-    "https://YOUR-PROJECT.web.app",
-    "https://YOUR-PROJECT.firebaseapp.com",
+    "https://shatigoai.web.app",
+    "https://shatigoai.firebaseapp.com",
     ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    
 )
 
 ds = datastore.Client()
@@ -38,7 +39,14 @@ def new_public_id(prefix: str) -> str:
 def initial_state() -> Dict[str, Any]:
     # Datastore: no nested arrays. Use flat 64-length list.
     return {
-        "board": ["." for _ in range(64)],  # 8x8 flattened row-major
+        "board": ["r","n","b","q","k","b","n","r",
+                "p","p","p","p","p","p","p","p",
+                ".",".",".",".",".",".",".",".",
+                ".",".",".",".",".",".",".",".",
+                ".",".",".",".",".",".",".",".",
+                ".",".",".",".",".",".",".",".",
+                "P","P","P","P","P","P","P","P",
+                "R","N","B","Q","K","B","N","R"],#["." for _ in range(64)],  # 8x8 flattened row-major
         "turn": "P1",
         "status": "ACTIVE",
         "message": "Game created",
