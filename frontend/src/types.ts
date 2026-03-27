@@ -1,17 +1,20 @@
 export type Player = "P1" | "P2";
 
 export type GameState = {
-  board: string[]; // length 64, flattened
+  board: string[];
+  fen?: string;
   turn: Player;
   status: "ACTIVE" | "DONE";
   message: string;
+  lastMoveSan?: string | null;
+  lastMoveUci?: string | null;
 };
 
 export type CreateGameResponse = {
   gameId: string;
   joinCode: string;
   player: Player;
-  playerToken: string; // NOW returned
+  playerToken: string;
   state: GameState;
 };
 
