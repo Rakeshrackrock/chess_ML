@@ -16,6 +16,22 @@ function getOrCreateLocalToken(key: string) {
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = ["8", "7", "6", "5", "4", "3", "2", "1"];
 
+const PIECE_MAP: Record<string, string> = {
+  P: "♙",
+  N: "♘",
+  B: "♗",
+  R: "♖",
+  Q: "♕",
+  K: "♔",
+  p: "♟",
+  n: "♞",
+  b: "♝",
+  r: "♜",
+  q: "♛",
+  k: "♚",
+  ".": "",
+};
+
 export default function App() {
   const [gameId, setGameId] = useState<string>("");
   const [joinCode, setJoinCode] = useState<string>("");
@@ -96,6 +112,9 @@ export default function App() {
     return (lastMove.from.r === r && lastMove.from.c === c) ||
            (lastMove.to.r   === r && lastMove.to.c   === c);
   }
+
+  console.log("STATE:", state);
+  console.log("BOARD:", state?.board);
 
   //const turnIsWhite = state?.turn === "white" || state?.turn === "P1" || state?.turn === "w";
 
@@ -226,7 +245,7 @@ export default function App() {
                               ].join(" ")}
                               onClick={onCellClick}
                             >
-                              {!isEmpty && <span>{cell}</span>}
+                              {!isEmpty && <span className="piece">{PIECE_MAP[cell] ?? ""}</span>}
                             </div>
                           );
                         })}

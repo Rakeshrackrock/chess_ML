@@ -285,6 +285,12 @@ button.primary:hover { background: var(--btn-hover); }
   user-select: none;
 }
 
+.piece {
+  font-size: 36px;
+  line-height: 1;
+  user-select: none;
+}
+
 /* Checkerboard pattern */
 .boardRow:nth-child(odd)  .cell:nth-child(odd)  { background: var(--light-sq); }
 .boardRow:nth-child(odd)  .cell:nth-child(even) { background: var(--dark-sq); }
