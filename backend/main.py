@@ -1,19 +1,25 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-# from google.cloud import datastore
 from datetime import datetime, timezone
 import secrets
-import random
 import chess
 from typing import Any, Dict, Optional
+import os
+import torch
 
-app = FastAPI(title="Chess Game API (Datastore)")
+# Uncomment for GCP deployment
+# from google.cloud import datastore
+
+from agent import load_model, predict_best_move
+
+app = FastAPI(title="Chess Game API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "https://shatigoai.web.app",
         "https://shatigoai.firebaseapp.com",
     ],
@@ -22,18 +28,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# -----------------------------------
+# Storage mode
+# -----------------------------------
+# Local now, switch to False later on GCP
+USE_LOCAL_STORE = True
+
+# Uncomment for GCP deployment
 # ds = datastore.Client()
 
-# ---- LOCAL DEV STORAGE ----
-LOCAL_GAMES = {}
-LOCAL_MOVES = {}
-
-USE_LOCAL_STORE = True
+LOCAL_GAMES: dict[str, dict] = {}
+LOCAL_MOVES: dict[str, dict] = {}
 
 GAMES_KIND = "Game"
 MOVES_KIND = "Move"
 
+# -----------------------------------
+# Model loading
+# -----------------------------------
+MODEL_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MODEL_CHECKPOINT = os.path.join(os.path.dirname(__file__), "latest.pt")
+MODEL = None
 
+
+def get_model():
+    global MODEL
+    if MODEL is None:
+        if not os.path.exists(MODEL_CHECKPOINT):
+            raise HTTPException(500, f"Checkpoint not found: {MODEL_CHECKPOINT}")
+        MODEL = load_model(MODEL_CHECKPOINT, MODEL_DEVICE)
+    return MODEL
+
+
+# -----------------------------------
+# Helpers
+# -----------------------------------
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -78,7 +107,7 @@ def move_dict_to_chess_move(move: Dict[str, Any], board: chess.Board) -> chess.M
     Converts frontend move payload:
       { "from": {"r": 6, "c": 4}, "to": {"r": 4, "c": 4} }
     into a python-chess Move.
-    Auto-promotes pawns to queen for now.
+    Auto-promotes pawns to queen.
     """
     try:
         from_r = int(move["from"]["r"])
@@ -110,8 +139,7 @@ def game_status_from_board(board: chess.Board) -> str:
 
 def game_message_from_board(board: chess.Board, last_actor: str, last_san: str) -> str:
     if board.is_checkmate():
-        winner = last_actor
-        return f"{last_san} — checkmate. {winner} wins."
+        return f"{last_san} — checkmate. {last_actor} wins."
     if board.is_stalemate():
         return f"{last_san} — stalemate."
     if board.is_insufficient_material():
@@ -139,6 +167,9 @@ def initial_state() -> Dict[str, Any]:
     }
 
 
+# -----------------------------------
+# Request / Response models
+# -----------------------------------
 class CreateGameResponse(BaseModel):
     gameId: str
     joinCode: str
@@ -174,17 +205,45 @@ class AiMoveRequest(BaseModel):
     difficulty: Optional[str] = "medium"
 
 
-# def get_game_entity(game_id: str):
-#     entity = ds.get(ds.key(GAMES_KIND, game_id))
-#     if not entity:
-#         raise HTTPException(404, "Game not found")
-#     return entity
-
+# -----------------------------------
+# Storage abstraction
+# -----------------------------------
 def get_game_entity(game_id: str):
-    entity = LOCAL_GAMES.get(game_id)
-    if not entity:
-        raise HTTPException(404, "Game not found")
-    return entity
+    if USE_LOCAL_STORE:
+        entity = LOCAL_GAMES.get(game_id)
+        if not entity:
+            raise HTTPException(404, "Game not found")
+        return entity
+
+    # Uncomment for GCP deployment
+    # entity = ds.get(ds.key(GAMES_KIND, game_id))
+    # if not entity:
+    #     raise HTTPException(404, "Game not found")
+    # return dict(entity)
+
+    raise HTTPException(500, "Datastore mode not enabled")
+
+
+def save_game_entity(game_id: str, game_doc: dict):
+    if USE_LOCAL_STORE:
+        LOCAL_GAMES[game_id] = game_doc
+        return
+
+    # Uncomment for GCP deployment
+    # entity = datastore.Entity(key=ds.key(GAMES_KIND, game_id))
+    # entity.update(game_doc)
+    # ds.put(entity)
+
+
+def save_move_entity(move_id: str, move_doc: dict):
+    if USE_LOCAL_STORE:
+        LOCAL_MOVES[move_id] = move_doc
+        return
+
+    # Uncomment for GCP deployment
+    # entity = datastore.Entity(key=ds.key(MOVES_KIND, move_id))
+    # entity.update(move_doc)
+    # ds.put(entity)
 
 
 def player_from_token(game: Dict[str, Any], token: str) -> str:
@@ -196,6 +255,9 @@ def player_from_token(game: Dict[str, Any], token: str) -> str:
     raise HTTPException(403, "Invalid player token")
 
 
+# -----------------------------------
+# Chess logic
+# -----------------------------------
 def apply_human_move(state: Dict[str, Any], move: Dict[str, Any], player: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
     if state.get("status") != "ACTIVE":
         raise HTTPException(400, "Game is not active")
@@ -240,20 +302,13 @@ def apply_human_move(state: Dict[str, Any], move: Dict[str, Any], player: str) -
 
 def get_ai_move_from_model(current_fen: str, difficulty: str = "medium") -> str:
     """
-    Replace this with your ML team's real inference function.
-
-    Expected contract:
-      input  -> current_fen (str)
-      output -> SAN move (str), e.g. 'e4', 'Nf3', 'Qxe5+', 'O-O'
+    Returns a UCI move like 'e2e4' or 'g1f3'.
     """
-    board = chess.Board(current_fen)
-    legal_moves = list(board.legal_moves)
-    if not legal_moves:
-        raise HTTPException(400, "No legal moves available for AI")
-
-    # Temporary fallback so integration works now.
-    move = random.choice(legal_moves)
-    return board.san(move)
+    try:
+        model = get_model()
+        return predict_best_move(current_fen, model, MODEL_DEVICE)
+    except Exception as e:
+        raise HTTPException(500, f"Model inference failed: {str(e)}")
 
 
 def apply_ai_move(state: Dict[str, Any], difficulty: str) -> tuple[Dict[str, Any], Dict[str, Any], str]:
@@ -267,17 +322,17 @@ def apply_ai_move(state: Dict[str, Any], difficulty: str) -> tuple[Dict[str, Any
     board = chess.Board(fen)
     ai_player = "P1" if board.turn == chess.WHITE else "P2"
 
-    san = get_ai_move_from_model(fen, difficulty)
+    uci = get_ai_move_from_model(fen, difficulty)
 
     try:
-        move = board.parse_san(san)
+        move = chess.Move.from_uci(uci)
     except ValueError:
-        raise HTTPException(500, f"Model returned invalid SAN: {san}")
+        raise HTTPException(500, f"Model returned invalid UCI: {uci}")
 
     if move not in board.legal_moves:
-        raise HTTPException(500, f"Model returned illegal move: {san}")
+        raise HTTPException(500, f"Model returned illegal move: {uci}")
 
-    uci = move.uci()
+    san = board.san(move)
 
     from_sq = move.from_square
     to_sq = move.to_square
@@ -313,9 +368,15 @@ def apply_ai_move(state: Dict[str, Any], difficulty: str) -> tuple[Dict[str, Any
     return new_state, move_payload, ai_player
 
 
+# -----------------------------------
+# Routes
+# -----------------------------------
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {
+        "ok": True,
+        "storage": "local" if USE_LOCAL_STORE else "datastore",
+    }
 
 
 @app.post("/games", response_model=CreateGameResponse)
@@ -337,11 +398,7 @@ def create_game():
         "state": state,
     }
 
-    # entity = datastore.Entity(key=ds.key(GAMES_KIND, game_id))
-    # entity.update(doc)
-    # ds.put(entity)
-
-    LOCAL_GAMES[game_id] = doc
+    save_game_entity(game_id, doc)
 
     return CreateGameResponse(
         gameId=game_id,
@@ -354,8 +411,7 @@ def create_game():
 
 @app.post("/games/{game_id}/join", response_model=JoinResponse)
 def join_game(game_id: str, req: JoinRequest):
-    entity = get_game_entity(game_id)
-    game = dict(entity)
+    game = get_game_entity(game_id)
 
     if game.get("joinCode") != req.joinCode:
         raise HTTPException(403, "Invalid join code")
@@ -370,13 +426,10 @@ def join_game(game_id: str, req: JoinRequest):
     state = game.get("state", {})
     state["message"] = "P2 joined the game"
 
-    entity.update({
-        "players": players,
-        "state": state,
-        "updatedAt": now_iso(),
-    })
-    # ds.put(entity)
-    LOCAL_GAMES[game_id] = entity
+    game["players"] = players
+    game["state"] = state
+    game["updatedAt"] = now_iso()
+    save_game_entity(game_id, game)
 
     return JoinResponse(
         gameId=game_id,
@@ -388,8 +441,7 @@ def join_game(game_id: str, req: JoinRequest):
 
 @app.get("/games/{game_id}")
 def get_game(game_id: str):
-    entity = get_game_entity(game_id)
-    game = dict(entity)
+    game = get_game_entity(game_id)
 
     return {
         "gameId": game["gameId"],
@@ -401,8 +453,7 @@ def get_game(game_id: str):
 
 @app.post("/games/{game_id}/move", response_model=MoveResponse)
 def make_move(game_id: str, req: MoveRequest):
-    entity = get_game_entity(game_id)
-    game = dict(entity)
+    game = get_game_entity(game_id)
 
     player = player_from_token(game, req.playerToken)
     state = game.get("state", {})
@@ -410,18 +461,7 @@ def make_move(game_id: str, req: MoveRequest):
     new_state, move_payload = apply_human_move(state, req.move, player)
 
     move_id = new_public_id("move")
-    # move_entity = datastore.Entity(key=ds.key(MOVES_KIND, move_id))
-    # move_entity.update({
-    #     "moveId": move_id,
-    #     "gameId": game_id,
-    #     "player": player,
-    #     "move": move_payload,
-    #     "clientTs": req.clientTs,
-    #     "serverTs": now_iso(),
-    #     "type": "HUMAN",
-    # })
-
-    LOCAL_MOVES[move_id] = {
+    move_doc = {
         "moveId": move_id,
         "gameId": game_id,
         "player": player,
@@ -429,55 +469,37 @@ def make_move(game_id: str, req: MoveRequest):
         "clientTs": req.clientTs,
         "serverTs": now_iso(),
         "type": "HUMAN",
-}
+    }
+    save_move_entity(move_id, move_doc)
 
-    # ds.put_multi([move_entity])
-
-    entity.update({
-        "state": new_state,
-        "updatedAt": now_iso(),
-    })
-    # ds.put(entity)
-    LOCAL_GAMES[game_id] = entity
+    game["state"] = new_state
+    game["updatedAt"] = now_iso()
+    save_game_entity(game_id, game)
 
     return MoveResponse(gameId=game_id, state=new_state, moveId=move_id)
 
 
 @app.post("/games/{game_id}/ai-move", response_model=MoveResponse)
 def ai_move(game_id: str, req: AiMoveRequest):
-    entity = get_game_entity(game_id)
-    game = dict(entity)
+    game = get_game_entity(game_id)
     state = game.get("state", {})
 
     new_state, move_payload, ai_player = apply_ai_move(state, req.difficulty or "medium")
 
     move_id = new_public_id("move")
-    # move_entity = datastore.Entity(key=ds.key(MOVES_KIND, move_id))
-    # move_entity.update({
-    #     "moveId": move_id,
-    #     "gameId": game_id,
-    #     "player": ai_player,
-    #     "move": move_payload,
-    #     "clientTs": None,
-    #     "serverTs": now_iso(),
-    #     "type": "AI",
-    # })
-    LOCAL_MOVES[move_id] = {
+    move_doc = {
         "moveId": move_id,
         "gameId": game_id,
-        "player": player,
+        "player": ai_player,
         "move": move_payload,
-        "clientTs": req.clientTs,
+        "clientTs": None,
         "serverTs": now_iso(),
-        "type": "HUMAN",
-}
-    # ds.put_multi([move_entity])
+        "type": "AI",
+    }
+    save_move_entity(move_id, move_doc)
 
-    entity.update({
-        "state": new_state,
-        "updatedAt": now_iso(),
-    })
-    # ds.put(entity)
-    LOCAL_GAMES[game_id] = entity
+    game["state"] = new_state
+    game["updatedAt"] = now_iso()
+    save_game_entity(game_id, game)
 
     return MoveResponse(gameId=game_id, state=new_state, moveId=move_id)
