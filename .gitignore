@@ -67,3 +67,27 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# ML checkpoints
+*.pt
+*.pth
+
+# Frontend
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+
+# Env files
+.env
+frontend/.env
+frontend/.env.local
+backend/.env

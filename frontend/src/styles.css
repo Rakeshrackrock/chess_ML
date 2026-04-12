@@ -138,11 +138,15 @@ input {
   outline: none;
   transition: border-color 0.15s;
 }
+
 input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
-input::placeholder { color: var(--text-dim); }
+
+input::placeholder {
+  color: var(--text-dim);
+}
 
 /* ─── Buttons ─────────────────────────────────────────────────────── */
 button {
@@ -158,18 +162,41 @@ button {
   transition: background 0.12s, color 0.12s, transform 0.08s;
   white-space: nowrap;
 }
+
 button:hover {
   background: var(--border);
   color: var(--text);
 }
-button:active { transform: scale(0.97); }
+
+button:active {
+  transform: scale(0.97);
+}
 
 button.primary {
   background: var(--btn-primary);
   color: #1a1a1a;
   border: none;
 }
-button.primary:hover { background: var(--btn-hover); }
+
+button.primary:hover {
+  background: var(--btn-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button:disabled:hover {
+  background: var(--bg-panel);
+  color: var(--text-muted);
+}
+
+button.primary:disabled:hover {
+  background: var(--btn-primary);
+  color: #1a1a1a;
+}
 
 /* ─── Error ───────────────────────────────────────────────────────── */
 .error {
@@ -193,6 +220,7 @@ button.primary:hover { background: var(--btn-hover); }
   padding: 12px 14px;
   font-size: 13px;
 }
+
 .kv b {
   color: var(--text-muted);
   font-weight: 600;
@@ -227,7 +255,7 @@ button.primary:hover { background: var(--btn-hover); }
 
 .coords-files {
   display: flex;
-  padding-left: 20px; /* align with board offset */
+  padding-left: 20px;
 }
 
 .coord-file {
@@ -269,7 +297,9 @@ button.primary:hover { background: var(--btn-hover); }
     0 2px 8px rgba(0,0,0,0.4);
 }
 
-.boardRow { display: flex; }
+.boardRow {
+  display: flex;
+}
 
 .cell {
   width: 56px;
@@ -278,7 +308,6 @@ button.primary:hover { background: var(--btn-hover); }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 38px;
   line-height: 1;
   position: relative;
   transition: filter 0.08s;
@@ -312,11 +341,23 @@ button.primary:hover { background: var(--btn-hover); }
   background: var(--sq-last) !important;
 }
 
-/* Piece shadow for readability on both square colors */
-.cell > span {
+.cell > img {
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   position: relative;
   z-index: 1;
+}
+
+.piece-img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  transition: transform 0.1s ease;
+}
+
+.cell:hover .piece-img {
+  transform: scale(1.08);
 }
 
 /* ─── Board Actions ───────────────────────────────────────────────── */
@@ -354,8 +395,15 @@ button.primary:hover { background: var(--btn-hover); }
   flex-shrink: 0;
 }
 
-.turn-dot.white { background: #f0d9b5; box-shadow: 0 0 4px rgba(240,217,181,0.5); }
-.turn-dot.black { background: #333; border: 1px solid #666; }
+.turn-dot.white {
+  background: #f0d9b5;
+  box-shadow: 0 0 4px rgba(240,217,181,0.5);
+}
+
+.turn-dot.black {
+  background: #333;
+  border: 1px solid #666;
+}
 
 /* ─── Player Badge ────────────────────────────────────────────────── */
 .player-bar {
@@ -380,11 +428,28 @@ button.primary:hover { background: var(--btn-hover); }
   font-size: 13px;
   flex-shrink: 0;
 }
-.player-avatar.white { background: var(--light-sq); color: #333; }
-.player-avatar.black { background: #333; color: #ddd; border: 1px solid #555; }
 
-.player-name { font-weight: 600; color: var(--text); }
-.player-role { color: var(--text-muted); margin-left: auto; font-size: 11px; }
+.player-avatar.white {
+  background: var(--light-sq);
+  color: #333;
+}
+
+.player-avatar.black {
+  background: #333;
+  color: #ddd;
+  border: 1px solid #555;
+}
+
+.player-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.player-role {
+  color: var(--text-muted);
+  margin-left: auto;
+  font-size: 11px;
+}
 
 /* ─── Divider ─────────────────────────────────────────────────────── */
 .divider {
@@ -397,6 +462,7 @@ button.primary:hover { background: var(--btn-hover); }
 .code-display {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg-input);
@@ -423,8 +489,20 @@ button.primary:hover { background: var(--btn-hover); }
 
 /* ─── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 800px) {
-  .grid { grid-template-columns: 1fr; }
-  .cell { width: 44px; height: 44px; font-size: 30px; }
-  .coord-file { width: 44px; }
-  .coord-rank { height: 44px; }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cell {
+    width: 44px;
+    height: 44px;
+  }
+
+  .coord-file {
+    width: 44px;
+  }
+
+  .coord-rank {
+    height: 44px;
+  }
 }
