@@ -4,9 +4,10 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import secrets
 import chess
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
 import os
 import torch
+import time
 
 # Uncomment for GCP deployment
 # from google.cloud import datastore
@@ -170,9 +171,13 @@ def initial_state() -> Dict[str, Any]:
 # -----------------------------------
 # Request / Response models
 # -----------------------------------
+class CreateGameRequest(BaseModel):
+    mode: Literal["PVP", "PVAI"] = "PVP"
+
+
 class CreateGameResponse(BaseModel):
     gameId: str
-    joinCode: str
+    joinCode: Optional[str] = None
     player: str
     playerToken: str
     state: Dict[str, Any]
@@ -387,6 +392,36 @@ def apply_ai_move(state: Dict[str, Any], difficulty: str) -> tuple[Dict[str, Any
     return new_state, move_payload, ai_player
 
 
+def auto_play_ai_if_needed(game_id: str, game: dict, state: dict) -> dict:
+    """
+    In PVAI mode, if it is P2's turn after a move, immediately make the AI move.
+    """
+    if game.get("mode") != "PVAI":
+        return state
+
+    if state.get("status") != "ACTIVE":
+        return state
+
+    if state.get("turn") != "P2":
+        return state
+
+    ai_state, ai_move_payload, ai_player = apply_ai_move(state, "medium")
+
+    ai_move_id = new_public_id("move")
+    ai_move_doc = {
+        "moveId": ai_move_id,
+        "gameId": game_id,
+        "player": ai_player,
+        "move": ai_move_payload,
+        "clientTs": None,
+        "serverTs": now_iso(),
+        "type": "AI",
+    }
+    save_move_entity(ai_move_id, ai_move_doc)
+
+    return ai_state
+
+
 # -----------------------------------
 # Routes
 # -----------------------------------
@@ -399,15 +434,16 @@ def health():
 
 
 @app.post("/games", response_model=CreateGameResponse)
-def create_game():
+def create_game(req: CreateGameRequest):
     game_id = new_public_id("game")
-    join_code = secrets.token_hex(3)
+    join_code = secrets.token_hex(3) if req.mode == "PVP" else None
     p1_token = secrets.token_urlsafe(16)
     state = initial_state()
 
     doc = {
         "gameId": game_id,
         "joinCode": join_code,
+        "mode": req.mode,
         "createdAt": now_iso(),
         "updatedAt": now_iso(),
         "players": {
@@ -431,6 +467,9 @@ def create_game():
 @app.post("/join", response_model=JoinResponse)
 def join_game(req: JoinRequest):
     game = find_game_by_join_code(req.joinCode)
+
+    if game.get("mode") == "PVAI":
+        raise HTTPException(400, "This game is configured for player vs AI")
 
     players = game.get("players", {})
     if players.get("P2", {}).get("token"):
@@ -463,6 +502,7 @@ def get_game(game_id: str):
         "gameId": game["gameId"],
         "createdAt": game.get("createdAt"),
         "updatedAt": game.get("updatedAt"),
+        "mode": game.get("mode", "PVP"),
         "state": game.get("state"),
     }
 
@@ -473,6 +513,9 @@ def make_move(game_id: str, req: MoveRequest):
 
     player = player_from_token(game, req.playerToken)
     state = game.get("state", {})
+
+    if game.get("mode") == "PVAI" and player != "P1":
+        raise HTTPException(403, "Only P1 can make human moves in player vs AI mode")
 
     new_state, move_payload = apply_human_move(state, req.move, player)
 
@@ -487,6 +530,8 @@ def make_move(game_id: str, req: MoveRequest):
         "type": "HUMAN",
     }
     save_move_entity(move_id, move_doc)
+
+    # new_state = auto_play_ai_if_needed(game_id, game, new_state)
 
     game["state"] = new_state
     game["updatedAt"] = now_iso()
@@ -519,6 +564,11 @@ def ai_move(game_id: str, req: AiMoveRequest):
         "type": "AI",
     }
     save_move_entity(move_id, move_doc)
+
+    # IMPORTANT FIX:
+    # In PVAI mode, if P1 asked AI to move on P1's turn, now it becomes P2's turn.
+    # Auto-play the bot response too.
+    # new_state = auto_play_ai_if_needed(game_id, game, new_state)
 
     game["state"] = new_state
     game["updatedAt"] = now_iso()

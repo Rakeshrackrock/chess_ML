@@ -4,6 +4,7 @@ import type { GameState } from "./types";
 import "./styles.css";
 
 type Role = "P1" | "P2";
+type GameMode = "PVP" | "PVAI";
 
 function getOrCreateLocalToken(key: string) {
   const existing = localStorage.getItem(key);
@@ -30,6 +31,8 @@ const PIECE_MAP: Record<string, string> = {
 };
 
 export default function App() {
+  const [gameMode, setGameMode] = useState<GameMode>("PVP");
+
   const [gameId, setGameId] = useState<string>("");
   const [joinCode, setJoinCode] = useState<string>("");
   const [playerToken, setPlayerToken] = useState<string>("");
@@ -40,13 +43,13 @@ export default function App() {
   const [lastMove, setLastMove] = useState<{ from: { r: number; c: number }; to: { r: number; c: number } } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useMemo(() => getOrCreateLocalToken("shatigo_client_id"), []);
+  useMemo(() => getOrCreateLocalToken("chess_client_id"), []);
 
   async function onCreate() {
     try {
-      const res = await api.createGame();
+      const res = await api.createGame(gameMode);
       setGameId(res.gameId);
-      setJoinCode(res.joinCode);
+      setJoinCode(res.joinCode ?? "");
       setState(res.state);
       setRole(res.player);
       setPlayerToken(res.playerToken);
@@ -68,6 +71,7 @@ export default function App() {
       setSelected(null);
       setLastMove(null);
       setError("");
+      setGameMode("PVP");
     } catch (e: any) {
       setError(e.message);
     }
@@ -114,6 +118,17 @@ export default function App() {
       setLastMove({ from, to });
       setSelected(null);
       setError("");
+
+      if (gameMode === "PVAI" && role === "P1" && res.state.status === "ACTIVE" && res.state.turn === "P2") {
+        setTimeout(async () => {
+          try {
+            const botRes = await api.aiMove(gameId, "medium");
+            setState(botRes.state);
+          } catch (e: any) {
+            setError(e.message);
+          }
+        }, 700);
+      } 
     } catch (e: any) {
       setError(e.message);
       setSelected(null);
@@ -122,26 +137,36 @@ export default function App() {
 
   async function requestAiMove() {
     if (!gameId || !state) return;
-
+  
     if (state.status !== "ACTIVE") {
       setError("Game is not active");
       return;
     }
-
+  
     if ((state.turn === "P1" && role !== "P1") || (state.turn === "P2" && role !== "P2")) {
       setError("Only the player whose turn it is can request the AI move");
       return;
     }
-
+  
     setError("");
     try {
       const res = await api.aiMove(gameId, "medium", playerToken);
       setState(res.state);
+  
+      if (gameMode === "PVAI" && role === "P1" && res.state.status === "ACTIVE" && res.state.turn === "P2") {
+        setTimeout(async () => {
+          try {
+            const botRes = await api.aiMove(gameId, "medium");
+            setState(botRes.state);
+          } catch (e: any) {
+            setError(e.message);
+          }
+        }, 700);
+      }
     } catch (e: any) {
       setError(e.message);
     }
   }
-
   async function copyJoinCode() {
     if (!joinCode) return;
     try {
@@ -188,7 +213,7 @@ export default function App() {
       <header className="header">
         <div className="header-logo">♟</div>
         <div>
-          <h1>Chess</h1>
+          <h1>AI Chess Arena</h1>
         </div>
       </header>
 
@@ -197,63 +222,79 @@ export default function App() {
           <h2>Game Setup</h2>
 
           <div className="row">
+            <button
+              className={gameMode === "PVP" ? "primary" : ""}
+              onClick={() => setGameMode("PVP")}
+              style={{ flex: 1 }}
+            >
+              vs Player
+            </button>
+            <button
+              className={gameMode === "PVAI" ? "primary" : ""}
+              onClick={() => setGameMode("PVAI")}
+              style={{ flex: 1 }}
+            >
+              vs AI
+            </button>
+          </div>
+
+          <div className="row">
             <button className="primary" onClick={onCreate} style={{ flex: 1 }}>
               + New Game
             </button>
           </div>
 
-          <div className="divider" />
+          {gameMode === "PVP" && (
+            <>
+              <div className="divider" />
 
-          <div className="row">
-            <label>Join Code</label>
-            <input
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              placeholder="Enter join code"
-            />
-          </div>
-
-          <div className="row">
-            <button onClick={onJoin} style={{ flex: 1 }}>
-              Join as Black (P2)
-            </button>
-            {/* <button onClick={refresh} disabled={!gameId}>
-              ↻ Refresh
-            </button> */}
-          </div>
-
-          {joinCode && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
-                Share this join code
+              <div className="row">
+                <label>Join Code</label>
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="Enter join code"
+                />
               </div>
 
-              <div className="code-display">
-                <span>🔑 Join Code:</span>
-                <span>{joinCode}</span>
+              <div className="row">
+                <button onClick={onJoin} style={{ flex: 1 }}>
+                  Join as Black (P2)
+                </button>
               </div>
 
-              <button
-                onClick={copyJoinCode}
-                className="primary"
-                style={{ marginTop: 6, width: "100%" }}
-              >
-                {copied ? "Copied!" : "Copy Join Code"}
-              </button>
-            </div>
+              {joinCode && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+                    Share this join code
+                  </div>
+
+                  <div className="code-display">
+                    <span>🔑 Join Code:</span>
+                    <span>{joinCode}</span>
+                  </div>
+
+                  <button
+                    onClick={copyJoinCode}
+                    className="primary"
+                    style={{ marginTop: 6, width: "100%" }}
+                  >
+                    {copied ? "Copied!" : "Copy Join Code"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
-          {/* {gameId && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
-                Internal game ID
+          {gameMode === "PVAI" && (
+            <>
+              <div className="divider" />
+              <div className="muted" style={{ textAlign: "left" }}>
+                In this mode, you play as White (P1) and the bot plays as Black (P2).
+                The bot will move automatically after your move.
               </div>
-              <div className="code-display">
-                <span>🆔 Game ID:</span>
-                <span>{gameId}</span>
-              </div>
-            </div>
-          )} */}
+            </>
+          )}
 
           {error && <div className="error">⚠ {error}</div>}
 
@@ -270,6 +311,9 @@ export default function App() {
                 </div>
                 <div>
                   <b>Role</b> {roleLabel}
+                </div>
+                <div>
+                  <b>Mode</b> {gameMode === "PVP" ? "Player vs Player" : "Player vs AI"}
                 </div>
                 {state.message && (
                   <div>

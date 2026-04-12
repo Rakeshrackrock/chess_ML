@@ -25,10 +25,10 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  createGame: () =>
+  createGame: (mode: "PVP" | "PVAI") =>
     http<CreateGameResponse>("/games", {
       method: "POST",
-      body: "{}",
+      body: JSON.stringify({ mode }),
     }),
 
   joinGame: (joinCode: string) =>
