@@ -13,22 +13,19 @@ function getOrCreateLocalToken(key: string) {
   return token;
 }
 
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
-const RANKS = ["8", "7", "6", "5", "4", "3", "2", "1"];
-
 const PIECE_MAP: Record<string, string> = {
-  P: "♙",
-  N: "♘",
-  B: "♗",
-  R: "♖",
-  Q: "♕",
-  K: "♔",
-  p: "♟",
-  n: "♞",
-  b: "♝",
-  r: "♜",
-  q: "♛",
-  k: "♚",
+  P: "/src/assets/pieces/wP.svg",
+  N: "/src/assets/pieces/wN.svg",
+  B: "/src/assets/pieces/wB.svg",
+  R: "/src/assets/pieces/wR.svg",
+  Q: "/src/assets/pieces/wQ.svg",
+  K: "/src/assets/pieces/wK.svg",
+  p: "/src/assets/pieces/bP.svg",
+  n: "/src/assets/pieces/bN.svg",
+  b: "/src/assets/pieces/bB.svg",
+  r: "/src/assets/pieces/bR.svg",
+  q: "/src/assets/pieces/bQ.svg",
+  k: "/src/assets/pieces/bK.svg",
   ".": "",
 };
 
@@ -40,7 +37,8 @@ export default function App() {
   const [state, setState] = useState<GameState | null>(null);
   const [error, setError] = useState<string>("");
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
-  const [lastMove, setLastMove] = useState<{ from: {r:number,c:number}, to: {r:number,c:number} } | null>(null);
+  const [lastMove, setLastMove] = useState<{ from: { r: number; c: number }; to: { r: number; c: number } } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useMemo(() => getOrCreateLocalToken("shatigo_client_id"), []);
 
@@ -52,6 +50,8 @@ export default function App() {
       setState(res.state);
       setRole(res.player);
       setPlayerToken(res.playerToken);
+      setSelected(null);
+      setLastMove(null);
       setError("");
     } catch (e: any) {
       setError(e.message);
@@ -60,10 +60,13 @@ export default function App() {
 
   async function onJoin() {
     try {
-      const res = await api.joinGame(gameId.trim(), joinCode.trim());
+      const res = await api.joinGame(joinCode.trim());
+      setGameId(res.gameId);
       setRole(res.player);
       setPlayerToken(res.playerToken);
       setState(res.state);
+      setSelected(null);
+      setLastMove(null);
       setError("");
     } catch (e: any) {
       setError(e.message);
@@ -71,11 +74,17 @@ export default function App() {
   }
 
   async function refresh() {
-    if (!gameId) return;
+    if (!gameId) {
+      setError("No active game to refresh");
+      return;
+    }
     try {
       const res = await api.getGame(gameId);
       setState(res.state);
-    } catch {}
+      setError("");
+    } catch (e: any) {
+      setError(e.message);
+    }
   }
 
   useEffect(() => {
@@ -85,52 +94,105 @@ export default function App() {
   }, [gameId]);
 
   async function submitMove(from: { r: number; c: number }, to: { r: number; c: number }) {
-    if (!gameId || !playerToken) return;
+    if (!gameId || !playerToken || !state) return;
+
+    if (state.status !== "ACTIVE") {
+      setError("Game is not active");
+      setSelected(null);
+      return;
+    }
+
+    if ((state.turn === "P1" && role !== "P1") || (state.turn === "P2" && role !== "P2")) {
+      setError("Not your turn");
+      setSelected(null);
+      return;
+    }
+
     try {
       const res = await api.makeMove(gameId, playerToken, { from, to });
       setState(res.state);
       setLastMove({ from, to });
+      setSelected(null);
       setError("");
+    } catch (e: any) {
+      setError(e.message);
+      setSelected(null);
+    }
+  }
+
+  async function requestAiMove() {
+    if (!gameId || !state) return;
+
+    if (state.status !== "ACTIVE") {
+      setError("Game is not active");
+      return;
+    }
+
+    if ((state.turn === "P1" && role !== "P1") || (state.turn === "P2" && role !== "P2")) {
+      setError("Only the player whose turn it is can request the AI move");
+      return;
+    }
+
+    setError("");
+    try {
+      const res = await api.aiMove(gameId, "medium", playerToken);
+      setState(res.state);
     } catch (e: any) {
       setError(e.message);
     }
   }
 
-  async function requestAiMove() {
-    if (!gameId) return;
-    setError("");
+  async function copyJoinCode() {
+    if (!joinCode) return;
     try {
-      const res = await api.aiMove(gameId, "medium");
-      setState(res.state);
-    } catch (e: any) {
-      setError(e.message);
+      await navigator.clipboard.writeText(joinCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError("Failed to copy join code");
     }
   }
 
   function isLastMove(r: number, c: number) {
     if (!lastMove) return false;
-    return (lastMove.from.r === r && lastMove.from.c === c) ||
-           (lastMove.to.r   === r && lastMove.to.c   === c);
+    return (
+      (lastMove.from.r === r && lastMove.from.c === c) ||
+      (lastMove.to.r === r && lastMove.to.c === c)
+    );
   }
 
-  console.log("STATE:", state);
-  console.log("BOARD:", state?.board);
+  const isBlackView = role === "P2";
 
-  //const turnIsWhite = state?.turn === "white" || state?.turn === "P1" || state?.turn === "w";
+  const roleLabel =
+    role === "P1"
+      ? "You are White (P1)"
+      : role === "P2"
+      ? "You are Black (P2)"
+      : "Not joined yet";
+
+  const topPlayer = isBlackView
+    ? { label: "White (P1)", isYou: role === "P1", avatar: "♔", colorClass: "white" }
+    : { label: "Black (P2)", isYou: role === "P2", avatar: "♚", colorClass: "black" };
+
+  const bottomPlayer = isBlackView
+    ? { label: "Black (P2)", isYou: role === "P2", avatar: "♚", colorClass: "black" }
+    : { label: "White (P1)", isYou: role === "P1", avatar: "♔", colorClass: "white" };
+
+  const canActOnTurn =
+    !!state &&
+    state.status === "ACTIVE" &&
+    ((state.turn === "P1" && role === "P1") || (state.turn === "P2" && role === "P2"));
 
   return (
     <div className="page">
-      {/* ── Header ── */}
       <header className="header">
         <div className="header-logo">♟</div>
         <div>
-          <h1>Chess on GCP</h1>
-          <p className="sub">No login · Cloud Run + Firestore · ML stub ready</p>
+          <h1>Chess</h1>
         </div>
       </header>
 
       <div className="grid">
-        {/* ── Setup Panel ── */}
         <section className="card">
           <h2>Game Setup</h2>
 
@@ -143,37 +205,55 @@ export default function App() {
           <div className="divider" />
 
           <div className="row">
-            <label>Game ID</label>
-            <input
-              value={gameId}
-              onChange={(e) => setGameId(e.target.value)}
-              placeholder="game_..."
-            />
-          </div>
-
-          <div className="row">
             <label>Join Code</label>
             <input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              placeholder="e.g. a1b2c3"
+              placeholder="Enter join code"
             />
           </div>
 
           <div className="row">
-            <button onClick={onJoin} style={{ flex: 1 }}>Join as Black</button>
-            <button onClick={refresh}>↻ Refresh</button>
+            <button onClick={onJoin} style={{ flex: 1 }}>
+              Join as Black (P2)
+            </button>
+            {/* <button onClick={refresh} disabled={!gameId}>
+              ↻ Refresh
+            </button> */}
           </div>
 
           {joinCode && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Share join code</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+                Share this join code
+              </div>
+
               <div className="code-display">
-                <span>🔗</span>
+                <span>🔑 Join Code:</span>
                 <span>{joinCode}</span>
               </div>
+
+              <button
+                onClick={copyJoinCode}
+                className="primary"
+                style={{ marginTop: 6, width: "100%" }}
+              >
+                {copied ? "Copied!" : "Copy Join Code"}
+              </button>
             </div>
           )}
+
+          {/* {gameId && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+                Internal game ID
+              </div>
+              <div className="code-display">
+                <span>🆔 Game ID:</span>
+                <span>{gameId}</span>
+              </div>
+            </div>
+          )} */}
 
           {error && <div className="error">⚠ {error}</div>}
 
@@ -185,101 +265,95 @@ export default function App() {
                   <b>Status</b>
                   <span className="status-pill">{state.status}</span>
                 </div>
-                <div><b>Turn</b> {state.turn}</div>
-                {state.message && <div><b>Message</b> {state.message}</div>}
+                <div>
+                  <b>Turn</b> {state.turn === "P1" ? "White (P1)" : "Black (P2)"}
+                </div>
+                <div>
+                  <b>Role</b> {roleLabel}
+                </div>
+                {state.message && (
+                  <div>
+                    <b>Message</b> {state.message}
+                  </div>
+                )}
               </div>
             </>
           )}
         </section>
 
-        {/* ── Board Panel ── */}
         <section className="card">
           <h2>Board</h2>
 
           {!state ? (
-            <div className="muted" style={{ padding: '40px 0', fontSize: 14 }}>
+            <div className="muted" style={{ padding: "40px 0", fontSize: 14 }}>
               Create or join a game to start playing.
             </div>
           ) : (
             <div className="board-wrapper">
-              {/* Black player bar */}
               <div className="player-bar">
-                <div className="player-avatar black">♚</div>
-                <span className="player-name">Black</span>
-                <span className="player-role">{role === "P2" ? "You" : "Opponent"}</span>
+                <div className={`player-avatar ${topPlayer.colorClass}`}>{topPlayer.avatar}</div>
+                <span className="player-name">{topPlayer.label}</span>
+                <span className="player-role">{topPlayer.isYou ? "You" : "Opponent"}</span>
               </div>
 
-              {/* Board with coordinate labels */}
-              <div className="board-coords-wrap">
-                <div className="coords-ranks">
-                  {RANKS.map(r => (
-                    <div className="coord-rank" key={r}>{r}</div>
-                  ))}
-                </div>
-                <div>
-                  <div className="board">
-                    {Array.from({ length: 8 }).map((_, r) => (
-                      <div className="boardRow" key={r}>
-                        {Array.from({ length: 8 }).map((_, c) => {
-                          const idx = r * 8 + c;
-                          const cell = state.board[idx] ?? ".";
-                          const isEmpty = cell === "." || cell === " " || !cell;
-                          const isSelected = selected?.r === r && selected?.c === c;
+              <div className="board">
+                {Array.from({ length: 8 }).map((_, r) => (
+                  <div className="boardRow" key={r}>
+                    {Array.from({ length: 8 }).map((_, c) => {
+                      const boardR = isBlackView ? 7 - r : r;
+                      const boardC = isBlackView ? 7 - c : c;
 
-                          function onCellClick() {
-                            if (!selected) {
-                              if (!isEmpty) setSelected({ r, c });
-                            } else {
-                              submitMove(selected, { r, c });
-                              setSelected(null);
-                            }
-                          }
+                      const idx = boardR * 8 + boardC;
+                      const cell = state.board[idx] ?? ".";
+                      const isEmpty = cell === ".";
+                      const isSelected = selected?.r === boardR && selected?.c === boardC;
 
-                          return (
-                            <div
-                              key={`${r}-${c}`}
-                              className={[
-                                "cell",
-                                isSelected ? "selected" : "",
-                                isLastMove(r, c) ? "last-move" : "",
-                              ].join(" ")}
-                              onClick={onCellClick}
-                            >
-                              {!isEmpty && <span className="piece">{PIECE_MAP[cell] ?? ""}</span>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                      function onCellClick() {
+                        if (!selected) {
+                          if (!isEmpty) setSelected({ r: boardR, c: boardC });
+                        } else {
+                          submitMove(selected, { r: boardR, c: boardC });
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={`${r}-${c}`}
+                          className={[
+                            "cell",
+                            isSelected ? "selected" : "",
+                            isLastMove(boardR, boardC) ? "last-move" : "",
+                          ].join(" ")}
+                          onClick={onCellClick}
+                        >
+                          {!isEmpty && (
+                            <img
+                              src={PIECE_MAP[cell]}
+                              alt={cell}
+                              className="piece-img"
+                              draggable={false}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {/* File labels */}
-                  <div style={{ display: 'flex', paddingLeft: 0, marginTop: 3 }}>
-                    {FILES.map(f => (
-                      <div className="coord-file" key={f}>{f}</div>
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
 
-              {/* White player bar */}
               <div className="player-bar">
-                <div className="player-avatar white">♔</div>
-                <span className="player-name">White</span>
-                <span className="player-role">{role === "P1" ? "You" : "Opponent"}</span>
+                <div className={`player-avatar ${bottomPlayer.colorClass}`}>{bottomPlayer.avatar}</div>
+                <span className="player-name">{bottomPlayer.label}</span>
+                <span className="player-role">{bottomPlayer.isYou ? "You" : "Opponent"}</span>
               </div>
 
-              {/* Turn indicator */}
-              {/* <div className="turn-bar">
-                <div className={`turn-dot ${turnIsWhite ? "white" : "black"}`} />
-                <span>{turnIsWhite ? "White to move" : "Black to move"}</span>
-              </div> */}
-
-              {/* Actions */}
               <div className="board-actions">
-                <button className="primary" onClick={requestAiMove}>🤖 AI Move</button>
+                <button className="primary" onClick={requestAiMove} disabled={!canActOnTurn}>
+                  🤖 AI Move
+                </button>
               </div>
 
-              <div className="muted">Click a piece, then click a destination square.</div>
+              <div className="muted">{roleLabel}. Click a piece, then click a destination square.</div>
             </div>
           )}
         </section>
@@ -287,7 +361,7 @@ export default function App() {
 
       <footer className="footer">
         <span>API: {import.meta.env.VITE_API_BASE ?? "http://localhost:8080"}</span>
-        <span>Playing as: {role || "—"}</span>
+        <span>Playing as: {role === "P1" ? "White (P1)" : role === "P2" ? "Black (P2)" : "—"}</span>
       </footer>
     </div>
   );

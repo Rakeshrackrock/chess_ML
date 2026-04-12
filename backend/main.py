@@ -203,6 +203,7 @@ class MoveResponse(BaseModel):
 
 class AiMoveRequest(BaseModel):
     difficulty: Optional[str] = "medium"
+    playerToken: Optional[str] = None
 
 
 # -----------------------------------
@@ -220,6 +221,24 @@ def get_game_entity(game_id: str):
     # if not entity:
     #     raise HTTPException(404, "Game not found")
     # return dict(entity)
+
+    raise HTTPException(500, "Datastore mode not enabled")
+
+
+def find_game_by_join_code(join_code: str):
+    if USE_LOCAL_STORE:
+        for game in LOCAL_GAMES.values():
+            if game.get("joinCode") == join_code:
+                return game
+        raise HTTPException(404, "Game not found for this join code")
+
+    # Uncomment for GCP deployment
+    # query = ds.query(kind=GAMES_KIND)
+    # query.add_filter("joinCode", "=", join_code)
+    # results = list(query.fetch(limit=1))
+    # if not results:
+    #     raise HTTPException(404, "Game not found for this join code")
+    # return dict(results[0])
 
     raise HTTPException(500, "Datastore mode not enabled")
 
@@ -409,12 +428,9 @@ def create_game():
     )
 
 
-@app.post("/games/{game_id}/join", response_model=JoinResponse)
-def join_game(game_id: str, req: JoinRequest):
-    game = get_game_entity(game_id)
-
-    if game.get("joinCode") != req.joinCode:
-        raise HTTPException(403, "Invalid join code")
+@app.post("/join", response_model=JoinResponse)
+def join_game(req: JoinRequest):
+    game = find_game_by_join_code(req.joinCode)
 
     players = game.get("players", {})
     if players.get("P2", {}).get("token"):
@@ -429,10 +445,10 @@ def join_game(game_id: str, req: JoinRequest):
     game["players"] = players
     game["state"] = state
     game["updatedAt"] = now_iso()
-    save_game_entity(game_id, game)
+    save_game_entity(game["gameId"], game)
 
     return JoinResponse(
-        gameId=game_id,
+        gameId=game["gameId"],
         player="P2",
         playerToken=p2_token,
         state=state,
@@ -483,6 +499,12 @@ def make_move(game_id: str, req: MoveRequest):
 def ai_move(game_id: str, req: AiMoveRequest):
     game = get_game_entity(game_id)
     state = game.get("state", {})
+
+    if req.playerToken:
+        player = player_from_token(game, req.playerToken)
+        expected_player = state.get("turn")
+        if player != expected_player:
+            raise HTTPException(403, "Only the player whose turn it is can request the AI move")
 
     new_state, move_payload, ai_player = apply_ai_move(state, req.difficulty or "medium")
 
