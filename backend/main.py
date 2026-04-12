@@ -10,7 +10,7 @@ import torch
 import time
 
 # Uncomment for GCP deployment
-# from google.cloud import datastore
+from google.cloud import datastore
 
 from agent import load_model, predict_best_move
 
@@ -23,6 +23,8 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "https://shatigoai.web.app",
         "https://shatigoai.firebaseapp.com",
+        "https://chessai-e0c8c.web.app",
+        "https://chessai-e0c8c.firebaseapp.com",
     ],
     allow_credentials=False,
     allow_methods=["*"],
@@ -33,10 +35,10 @@ app.add_middleware(
 # Storage mode
 # -----------------------------------
 # Local now, switch to False later on GCP
-USE_LOCAL_STORE = True
+USE_LOCAL_STORE = False
 
 # Uncomment for GCP deployment
-# ds = datastore.Client()
+ds = datastore.Client()
 
 LOCAL_GAMES: dict[str, dict] = {}
 LOCAL_MOVES: dict[str, dict] = {}
@@ -222,12 +224,12 @@ def get_game_entity(game_id: str):
         return entity
 
     # Uncomment for GCP deployment
-    # entity = ds.get(ds.key(GAMES_KIND, game_id))
-    # if not entity:
-    #     raise HTTPException(404, "Game not found")
-    # return dict(entity)
+    entity = ds.get(ds.key(GAMES_KIND, game_id))
+    if not entity:
+        raise HTTPException(404, "Game not found")
+    return dict(entity)
 
-    raise HTTPException(500, "Datastore mode not enabled")
+    # raise HTTPException(500, "Datastore mode not enabled")
 
 
 def find_game_by_join_code(join_code: str):
@@ -238,14 +240,14 @@ def find_game_by_join_code(join_code: str):
         raise HTTPException(404, "Game not found for this join code")
 
     # Uncomment for GCP deployment
-    # query = ds.query(kind=GAMES_KIND)
-    # query.add_filter("joinCode", "=", join_code)
-    # results = list(query.fetch(limit=1))
-    # if not results:
-    #     raise HTTPException(404, "Game not found for this join code")
-    # return dict(results[0])
+    query = ds.query(kind=GAMES_KIND)
+    query.add_filter("joinCode", "=", join_code)
+    results = list(query.fetch(limit=1))
+    if not results:
+        raise HTTPException(404, "Game not found for this join code")
+    return dict(results[0])
 
-    raise HTTPException(500, "Datastore mode not enabled")
+    # raise HTTPException(500, "Datastore mode not enabled")
 
 
 def save_game_entity(game_id: str, game_doc: dict):
@@ -254,9 +256,9 @@ def save_game_entity(game_id: str, game_doc: dict):
         return
 
     # Uncomment for GCP deployment
-    # entity = datastore.Entity(key=ds.key(GAMES_KIND, game_id))
-    # entity.update(game_doc)
-    # ds.put(entity)
+    entity = datastore.Entity(key=ds.key(GAMES_KIND, game_id))
+    entity.update(game_doc)
+    ds.put(entity)
 
 
 def save_move_entity(move_id: str, move_doc: dict):
@@ -265,9 +267,9 @@ def save_move_entity(move_id: str, move_doc: dict):
         return
 
     # Uncomment for GCP deployment
-    # entity = datastore.Entity(key=ds.key(MOVES_KIND, move_id))
-    # entity.update(move_doc)
-    # ds.put(entity)
+    entity = datastore.Entity(key=ds.key(MOVES_KIND, move_id))
+    entity.update(move_doc)
+    ds.put(entity)
 
 
 def player_from_token(game: Dict[str, Any], token: str) -> str:

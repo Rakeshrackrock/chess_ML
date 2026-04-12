@@ -15,18 +15,18 @@ function getOrCreateLocalToken(key: string) {
 }
 
 const PIECE_MAP: Record<string, string> = {
-  P: "/src/assets/pieces/wP.svg",
-  N: "/src/assets/pieces/wN.svg",
-  B: "/src/assets/pieces/wB.svg",
-  R: "/src/assets/pieces/wR.svg",
-  Q: "/src/assets/pieces/wQ.svg",
-  K: "/src/assets/pieces/wK.svg",
-  p: "/src/assets/pieces/bP.svg",
-  n: "/src/assets/pieces/bN.svg",
-  b: "/src/assets/pieces/bB.svg",
-  r: "/src/assets/pieces/bR.svg",
-  q: "/src/assets/pieces/bQ.svg",
-  k: "/src/assets/pieces/bK.svg",
+  P: "/pieces/wP.svg",
+  N: "/pieces/wN.svg",
+  B: "/pieces/wB.svg",
+  R: "/pieces/wR.svg",
+  Q: "/pieces/wQ.svg",
+  K: "/pieces/wK.svg",
+  p: "/pieces/bP.svg",
+  n: "/pieces/bN.svg",
+  b: "/pieces/bB.svg",
+  r: "/pieces/bR.svg",
+  q: "/pieces/bQ.svg",
+  k: "/pieces/bK.svg",
   ".": "",
 };
 
