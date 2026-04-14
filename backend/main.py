@@ -25,6 +25,8 @@ app.add_middleware(
         "https://shatigoai.firebaseapp.com",
         "https://chessai-e0c8c.web.app",
         "https://chessai-e0c8c.firebaseapp.com",
+        "https://chessml-bda.web.app",
+        "https://chessml-bda.firebaseapp.com",
     ],
     allow_credentials=False,
     allow_methods=["*"],

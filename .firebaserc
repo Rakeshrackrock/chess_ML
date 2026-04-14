@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "chessai-e0c8c"
-  }
+    "default": "chessai-e0c8c",
+    "chessML": "chessml-bda"
+  },
+  "targets": {},
+  "etags": {}
 }
