@@ -3,7 +3,8 @@
 A full-stack chess application with real-time multiplayer support and AI-powered gameplay.
 
 ## 🚀 Live Demo
-- Frontend: https://chessai-e0c8c.web.app/
+- Frontend(new): https://chessml-bda.web.app/
+- Frontend(old): https://chessai-e0c8c.web.app/
 - Backend: https://chess-backend-1072267285798.us-central1.run.app
 
 
