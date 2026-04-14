@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import type { GameState } from "./types";
+import type { BlunderInfo, GameState } from "./types";
 import "./styles.css";
 
 type Role = "P1" | "P2";
@@ -195,9 +195,13 @@ export default function App() {
       ? "You are Black (P2)"
       : "Not joined yet";
 
+  // const topPlayer = isBlackView
+  //   ? { label: "White (P1)", isYou: role === "P1", avatar: "♔", colorClass: "white" }
+  //   : { label: "Black (P2)", isYou: role === "P2", avatar: "♚", colorClass: "black" };
+
   const topPlayer = isBlackView
-    ? { label: "White (P1)", isYou: role === "P1", avatar: "♔", colorClass: "white" }
-    : { label: "Black (P2)", isYou: role === "P2", avatar: "♚", colorClass: "black" };
+    ? { label: "White (P1)", isYou: false, avatar: "♔", colorClass: "white" }
+    : { label: "Black (P2)", isYou: false, avatar: "♚", colorClass: "black" };
 
   const bottomPlayer = isBlackView
     ? { label: "Black (P2)", isYou: role === "P2", avatar: "♚", colorClass: "black" }
@@ -207,6 +211,11 @@ export default function App() {
     !!state &&
     state.status === "ACTIVE" &&
     ((state.turn === "P1" && role === "P1") || (state.turn === "P2" && role === "P2"));
+
+  const currentPlayerBlunder: BlunderInfo | null =
+    role && state?.blunderByPlayer
+      ? state.blunderByPlayer[role as "P1" | "P2"] ?? null
+      : null;
 
   return (
     <div className="page">
@@ -319,6 +328,86 @@ export default function App() {
                   <div>
                     <b>Message</b> {state.message}
                   </div>
+                )}
+              </div>
+
+              <div className="divider" />
+
+              <div className="blunder-panel">
+                <div className="blunder-title">Blunder Analysis</div>
+
+                {!currentPlayerBlunder ? (
+                  <div className="blunder-empty">
+                    No blunder analysis yet for your moves.
+                  </div>
+                ) : (
+                  <>
+                    <div className="blunder-grid">
+                      <div>
+                        <span className="blunder-label">Severity</span>
+                        <span className={`severity-pill severity-${currentPlayerBlunder.severity.replace(/\s+/g, "-")}`}>
+                          {currentPlayerBlunder.severity}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="blunder-label">Blunder?</span>
+                        <span>{currentPlayerBlunder.is_blunder ? "Yes" : "No"}</span>
+                      </div>
+                      {/* {currentPlayerBlunder.is_blunder && (
+                        <div>
+                          <span className="blunder-label">Blunder?</span>
+                          <span>Yes</span>
+                        </div>
+                      )} */}
+
+                      <div>
+                        <span className="blunder-label">Played move</span>
+                        <span>{currentPlayerBlunder.played_move}</span>
+                      </div>
+
+                      <div>
+                        <span className="blunder-label">Best move</span>
+                        <span>{currentPlayerBlunder.best_move}</span>
+                      </div>
+
+                      <div>
+                        <span className="blunder-label">Played rank</span>
+                        <span>
+                          {currentPlayerBlunder.played_rank} / {currentPlayerBlunder.total_legal_moves}
+                          {/* {currentPlayerBlunder.played_rank === 1
+                            ? " (Best move)"
+                            : ` (Top ${Math.round(currentPlayerBlunder.rank_pct * 100)}%)`} */}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="blunder-label">Played score</span>
+                        <span>{currentPlayerBlunder.played_score.toFixed(4)}</span>
+                      </div>
+
+                      <div>
+                        <span className="blunder-label">Score drop from top move</span>
+                        <span>{currentPlayerBlunder.drop.toFixed(4)}</span>
+                      </div>
+                      {/* {currentPlayerBlunder.played_rank !== 1 && (
+                        <div>
+                          <span className="blunder-label">Score drop</span>
+                          <span>{currentPlayerBlunder.drop.toFixed(4)}</span>
+                        </div>
+                      )} */}
+                    </div>
+
+                    <div className="top-moves">
+                      <div className="top-moves-title">Top moves and scores</div>
+                      {currentPlayerBlunder.top_moves.map((mv, idx) => (
+                        <div className="top-move-row" key={`${mv.move}-${idx}`}>
+                          <span>{idx + 1}. {mv.move}</span>
+                          <span>{mv.score.toFixed(4)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             </>

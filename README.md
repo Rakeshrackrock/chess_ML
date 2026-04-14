@@ -59,9 +59,16 @@ firebase deploy --only hosting
 
 ## ⚙️ Setup Instructions to run locally
 
-### 🔹 1. Clone the branch intergate-ml-backend locally
+### 🔹 1. Clone the project locally
 
-### 🔹 2. Backend Setup
+### 🔹 2. GCP Local Setup
+```bash
+gcloud config set project shatigoai
+gcloud auth application-default login
+gcloud auth application-default set-quota-project shatigoai
+```
+
+### 🔹 3. Backend Setup
 ```bash
 cd backend
 python3 -m venv .venv
@@ -76,7 +83,7 @@ Run backend:
 ```bash
 python -m uvicorn main:app --port 8080
 ```
-### 🔹 3. Frontend Setup
+### 🔹 4. Frontend Setup
 ```bash
 cd frontend
 npm install
