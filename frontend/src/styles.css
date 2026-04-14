@@ -239,6 +239,110 @@ button.primary:disabled:hover {
   color: #d4f0a0;
 }
 
+.blunder-panel {
+  margin-top: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.blunder-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.blunder-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.blunder-grid {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.blunder-grid > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.blunder-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.top-moves {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.top-moves-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.top-move-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.severity-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.severity-top-move {
+  background: rgba(70, 130, 180, 0.22);
+  color: #42ea36;
+}
+
+.severity-good {
+  background: rgba(90, 140, 70, 0.25);
+  color: #b7e3a1;
+}
+
+.severity-inaccuracy {
+  background: rgba(184, 148, 60, 0.22);
+  color: #f0d27a;
+}
+
+.severity-mistake {
+  background: rgba(201, 117, 55, 0.22);
+  color: #ffb27a;
+}
+
+.severity-blunder,
+.severity-major-blunder {
+  background: rgba(160, 52, 52, 0.22);
+  color: #ff8d8d;
+}
+
+.blunder-explanation {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ─── Board Wrapper ───────────────────────────────────────────────── */
 .board-wrapper {
   display: flex;

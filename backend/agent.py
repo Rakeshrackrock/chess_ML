@@ -4,6 +4,7 @@ agent.py — self-contained chess agent: tokenizer + model + move selection.
 from __future__ import annotations
 import dataclasses
 import os
+from typing import Any, Dict, List, Tuple
 
 import chess
 import numpy as np
@@ -73,6 +74,8 @@ def _build_vocab() -> dict[str, int]:
     assert len(moves) == 1968
     return {m: i for i, m in enumerate(moves)}
 
+MOVE_TO_ACTION = _build_vocab()
+
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
@@ -124,7 +127,7 @@ class ActionValueModel(nn.Module):
     def __init__(self, cfg: Config):
         super().__init__()
 
-        MOVE_TO_ACTION = _build_vocab()
+        # MOVE_TO_ACTION = _build_vocab()
         NUM_ACTIONS    = len(MOVE_TO_ACTION)
         SEQ_LENGTH     = 78
 
@@ -160,35 +163,233 @@ def load_model(checkpoint: str, device: torch.device) -> ActionValueModel:
 
 
 # ---------------------------------------------------------------------------
-# Best move
+# Helper functions
 # ---------------------------------------------------------------------------
+def _expected_win_from_log_probs(log_probs: torch.Tensor, K: int) -> torch.Tensor:
+    """
+    Convert the model's K-bin distribution into expected win probability.
+    """
+    mids = torch.linspace(0.5 / K, 1 - 0.5 / K, K, device=log_probs.device)
+    return (log_probs.exp() * mids).sum(dim=-1)
+
+
+def _legal_moves_in_vocab(board: chess.Board) -> List[str]:
+    return [m.uci() for m in board.legal_moves if m.uci() in MOVE_TO_ACTION]
+
+
 @torch.no_grad()
-def predict_best_move(fen: str, model: ActionValueModel, device: torch.device) -> str:
+def score_legal_moves(
+    fen: str,
+    model: ActionValueModel,
+    device: torch.device
+) -> List[Tuple[str, float]]:
     """
-    Generate all legal moves for the position, score each with the model,
-    and return the UCI move with the highest expected win probability.
+    Return all legal moves and their expected win probabilities,
+    sorted from best to worst.
     """
+    board = chess.Board(fen)
+    legals = _legal_moves_in_vocab(board)
 
-    MOVE_TO_ACTION = _build_vocab()
-    NUM_ACTIONS    = len(MOVE_TO_ACTION)
-    SEQ_LENGTH     = 78
-
-    board  = chess.Board(fen)
-    legals = [m.uci() for m in board.legal_moves if m.uci() in MOVE_TO_ACTION]
     if not legals:
         raise ValueError(f"No legal moves in vocabulary for: {fen}")
 
     fen_tokens = tokenize_fen(fen)
-    fen_t  = torch.tensor(fen_tokens, dtype=torch.long, device=device).unsqueeze(0).expand(len(legals), -1)
-    move_t = torch.tensor([MOVE_TO_ACTION[m] for m in legals], dtype=torch.long, device=device)
+    fen_t = torch.tensor(
+        fen_tokens, dtype=torch.long, device=device
+    ).unsqueeze(0).expand(len(legals), -1)
 
-    log_probs = model(fen_t, move_t)                          # (N, K)
+    move_t = torch.tensor(
+        [MOVE_TO_ACTION[m] for m in legals],
+        dtype=torch.long,
+        device=device
+    )
 
-    K     = model.cfg.K
-    mids  = torch.linspace(0.5/K, 1 - 0.5/K, K, device=device)
-    wins  = (log_probs.exp() * mids).sum(dim=-1)              # expected win prob per move
+    log_probs = model(fen_t, move_t)
+    wins = _expected_win_from_log_probs(log_probs, model.cfg.K)
 
-    return legals[wins.argmax().item()]
+    scored = list(zip(legals, wins.tolist()))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+@torch.no_grad()
+def get_move_score(
+    fen: str,
+    move_uci: str,
+    model: ActionValueModel,
+    device: torch.device
+) -> float:
+    board = chess.Board(fen)
+    legal_ucis = {m.uci() for m in board.legal_moves}
+
+    if move_uci not in legal_ucis:
+        raise ValueError(f"Illegal move {move_uci} for position: {fen}")
+
+    if move_uci not in MOVE_TO_ACTION:
+        raise ValueError(f"Move {move_uci} not in model vocabulary")
+
+    fen_tokens = tokenize_fen(fen)
+    fen_t = torch.tensor([fen_tokens], dtype=torch.long, device=device)
+    move_t = torch.tensor([MOVE_TO_ACTION[move_uci]], dtype=torch.long, device=device)
+
+    log_probs = model(fen_t, move_t)
+    win = _expected_win_from_log_probs(log_probs, model.cfg.K)[0].item()
+    return float(win)
+
+
+@torch.no_grad()
+def detect_blunder(
+    fen: str,
+    played_move: str,
+    model: ActionValueModel,
+    device: torch.device,
+    threshold: float = 0.15,
+    top_k: int = 3
+) -> Dict[str, Any]:
+    """
+    Compare a played move against the model's ranked legal moves.
+
+    Severity is determined primarily by the played move's rank percentile
+    among all legal moves, with score drop used to slightly soften or worsen
+    the severity in edge cases.
+
+    Guide:
+    rank 1                     -> top move
+    top 35%                    -> good
+    top 35% to 60%             -> inaccuracy
+    top 60% to 80%             -> mistake
+    below top 80%              -> blunder
+    """
+    board = chess.Board(fen)
+    legal_ucis = {m.uci() for m in board.legal_moves}
+
+    if played_move not in legal_ucis:
+        raise ValueError(f"Illegal move {played_move} for position: {fen}")
+
+    if played_move not in MOVE_TO_ACTION:
+        raise ValueError(f"Move {played_move} not in model vocabulary")
+
+    scored = score_legal_moves(fen, model, device)
+    best_move, best_score = scored[0]
+    total_legal_moves = len(scored)
+
+    played_score = None
+    played_rank = None
+
+    for idx, (move, score) in enumerate(scored, start=1):
+        if move == played_move:
+            played_score = score
+            played_rank = idx
+            break
+
+    if played_score is None:
+        raise ValueError(f"Could not score played move: {played_move}")
+
+    drop = best_score - played_score
+
+    # if drop >= 0.25:
+    #     severity = "major blunder"
+    # elif drop >= 0.15:
+    #     severity = "blunder"
+    # elif drop >= 0.10:
+    #     severity = "mistake"
+    # elif drop >= 0.05:
+    #     severity = "inaccuracy"
+    # else:
+    #     severity = "good"
+
+    rank_pct = played_rank / total_legal_moves
+
+    # Base severity from rank percentile
+    if played_rank == 1:
+        severity = "top move"
+    elif rank_pct <= 0.35:
+        severity = "good"
+    elif rank_pct <= 0.60:
+        severity = "inaccuracy"
+    elif rank_pct <= 0.80:
+        severity = "mistake"
+    else:
+        severity = "blunder"
+
+    order = ["top move", "good", "inaccuracy", "mistake", "blunder"]
+
+    def worsen(severity: str) -> str:
+        idx = order.index(severity)
+        return order[min(idx + 1, len(order) - 1)]
+
+    def soften(severity: str) -> str:
+        idx = order.index(severity)
+        return order[max(idx - 1, 0)]
+
+    # Score-drop adjustment
+    # Soften if score drop is very small
+    if drop < 0.03:
+        severity = soften(severity)
+
+    # Worsen if score drop is very large
+    elif drop >= 0.30:
+        severity = worsen(worsen(severity))
+    elif drop >= 0.15:
+        severity = worsen(severity)
+
+    # is_blunder = drop >= threshold
+    is_blunder = severity == "blunder"
+
+    return {
+        "fen": fen,
+        "played_move": played_move,
+        "best_move": best_move,
+        "played_score": round(float(played_score), 6),
+        "best_score": round(float(best_score), 6),
+        "drop": round(float(drop), 6),
+        "played_rank": played_rank,
+        "total_legal_moves": total_legal_moves,
+        "rank_pct": round(rank_pct, 4),
+        "is_blunder": is_blunder,
+        "severity": severity,
+        "threshold": threshold,
+        "top_moves": [
+            {"move": mv, "score": round(float(sc), 6)}
+            for mv, sc in scored[:top_k]
+        ],
+    }
+
+# ---------------------------------------------------------------------------
+# Best move
+# ---------------------------------------------------------------------------
+@torch.no_grad()
+def predict_best_move(fen: str, model: ActionValueModel, device: torch.device) -> str:
+    scored = score_legal_moves(fen, model, device)
+    return scored[0][0]
+
+# @torch.no_grad()
+# def predict_best_move(fen: str, model: ActionValueModel, device: torch.device) -> str:
+#     """
+#     Generate all legal moves for the position, score each with the model,
+#     and return the UCI move with the highest expected win probability.
+#     """
+
+#     MOVE_TO_ACTION = _build_vocab()
+#     NUM_ACTIONS    = len(MOVE_TO_ACTION)
+#     SEQ_LENGTH     = 78
+
+#     board  = chess.Board(fen)
+#     legals = [m.uci() for m in board.legal_moves if m.uci() in MOVE_TO_ACTION]
+#     if not legals:
+#         raise ValueError(f"No legal moves in vocabulary for: {fen}")
+
+#     fen_tokens = tokenize_fen(fen)
+#     fen_t  = torch.tensor(fen_tokens, dtype=torch.long, device=device).unsqueeze(0).expand(len(legals), -1)
+#     move_t = torch.tensor([MOVE_TO_ACTION[m] for m in legals], dtype=torch.long, device=device)
+
+#     log_probs = model(fen_t, move_t)                          # (N, K)
+
+#     K     = model.cfg.K
+#     mids  = torch.linspace(0.5/K, 1 - 0.5/K, K, device=device)
+#     wins  = (log_probs.exp() * mids).sum(dim=-1)              # expected win prob per move
+
+#     return legals[wins.argmax().item()]
 
 
 # ---------------------------------------------------------------------------

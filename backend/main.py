@@ -12,7 +12,7 @@ import time
 # Uncomment for GCP deployment
 from google.cloud import datastore
 
-from agent import load_model, predict_best_move
+from agent import load_model, predict_best_move, detect_blunder
 
 app = FastAPI(title="Chess Game API")
 
@@ -155,6 +155,20 @@ def game_message_from_board(board: chess.Board, last_actor: str, last_san: str) 
         return f"{last_actor} played {last_san} (check)"
     return f"{last_actor} played {last_san}"
 
+def analyze_blunder_safe(fen_before_move: str, played_move_uci: str) -> Optional[Dict[str, Any]]:
+    try:
+        model = get_model()
+        return detect_blunder(
+            fen=fen_before_move,
+            played_move=played_move_uci,
+            model=model,
+            device=MODEL_DEVICE,
+            threshold=0.15,
+            top_k=3,
+        )
+    except Exception:
+        return None
+
 
 def initial_state() -> Dict[str, Any]:
     board = chess.Board()
@@ -167,6 +181,10 @@ def initial_state() -> Dict[str, Any]:
         "message": "Game created",
         "lastMoveSan": None,
         "lastMoveUci": None,
+        "blunderByPlayer": {
+            "P1": None,
+            "P2": None,
+        },
     }
 
 
@@ -515,6 +533,7 @@ def make_move(game_id: str, req: MoveRequest):
 
     player = player_from_token(game, req.playerToken)
     state = game.get("state", {})
+    fen_before_move = state.get("fen")
 
     if game.get("mode") == "PVAI" and player != "P1":
         raise HTTPException(403, "Only P1 can make human moves in player vs AI mode")
@@ -533,6 +552,14 @@ def make_move(game_id: str, req: MoveRequest):
     }
     save_move_entity(move_id, move_doc)
 
+    blunder_result = None
+    if fen_before_move and move_payload.get("uci"):
+        blunder_result = analyze_blunder_safe(fen_before_move, move_payload["uci"])
+
+    existing_blunders = dict(new_state.get("blunderByPlayer") or {})
+    existing_blunders[player] = blunder_result
+    new_state["blunderByPlayer"] = existing_blunders
+
     # new_state = auto_play_ai_if_needed(game_id, game, new_state)
 
     game["state"] = new_state
@@ -546,12 +573,15 @@ def make_move(game_id: str, req: MoveRequest):
 def ai_move(game_id: str, req: AiMoveRequest):
     game = get_game_entity(game_id)
     state = game.get("state", {})
+    fen_before_move = state.get("fen")
+    requested_player = None
 
     if req.playerToken:
         player = player_from_token(game, req.playerToken)
         expected_player = state.get("turn")
         if player != expected_player:
             raise HTTPException(403, "Only the player whose turn it is can request the AI move")
+        requested_player = player
 
     new_state, move_payload, ai_player = apply_ai_move(state, req.difficulty or "medium")
 
@@ -566,6 +596,15 @@ def ai_move(game_id: str, req: AiMoveRequest):
         "type": "AI",
     }
     save_move_entity(move_id, move_doc)
+
+    blunder_result = None
+    if requested_player and fen_before_move and move_payload.get("uci"):
+        blunder_result = analyze_blunder_safe(fen_before_move, move_payload["uci"])
+
+    existing_blunders = dict(new_state.get("blunderByPlayer") or {})
+    if requested_player:
+        existing_blunders[requested_player] = blunder_result
+    new_state["blunderByPlayer"] = existing_blunders
 
     # IMPORTANT FIX:
     # In PVAI mode, if P1 asked AI to move on P1's turn, now it becomes P2's turn.
